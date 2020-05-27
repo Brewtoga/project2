@@ -1,46 +1,36 @@
-
 $(document).ready(function () {
+  var currentUserId;
 
-    var currentUserId;
+  $.get("/api/user_data").then(function (userData) {
+    currentUserId = userData.id;
+    lastOrder();
+  });
 
-    $.get("/api/user_data").then(function(userData){
-        
-        currentUserId = userData.id
-        lastOrder();
+  var orderDetails = [];
+  var orderId;
+  var price = [];
 
-    });
-
-   
-    var orderDetails = [];
-    var orderId;
-    var price = [];
-
-    function lastOrder(){
-
+  function lastOrder() {
     $.get("/api/order/" + currentUserId).then(function (data) {
-       
-        renderLastOrder(data);
-        orderId = data[data.length - 1].id;
-        
+      renderLastOrder(data);
+      orderId = data[data.length - 1].id;
     });
-}
+  }
 
-    function renderLastOrder(data) {
+  function renderLastOrder(data) {
+    $("#orders").empty();
+    $("#totalDisplay").empty();
 
-        $("#orders").empty();
-        $("#totalDisplay").empty();
+    orderDetails = JSON.parse(data[data.length - 1].menu_items);
+    totalQuantity = data[data.length - 1].quantity;
+    totalPrice = data[data.length - 1].total_price;
 
-        orderDetails = JSON.parse(data[data.length - 1].menu_items);
-        totalQuantity = data[data.length - 1].quantity;
-        totalPrice = data[data.length - 1].total_price;
-        
-        var newTotalPrice;
-       
-        for (var i = 0; i < orderDetails.length; i++) {
+    var newTotalPrice;
 
-            price.push(orderDetails[i].price * orderDetails[i].quantities);
+    for (var i = 0; i < orderDetails.length; i++) {
+      price.push(orderDetails[i].price * orderDetails[i].quantities);
 
-                let orderDetailsDisplay = (`
+      let orderDetailsDisplay = `
 
                 <tr>
                 <td>${orderDetails[i].menu_items}</td>
@@ -55,127 +45,97 @@ $(document).ready(function () {
                 <td><a data-menuitem = "${orderDetails[i].menu_items}" class="waves-effect waves-light btn-small removeItem">Remove Item</a></td>
                 </tr>
                     
-                `);
-                $("#orders").append(orderDetailsDisplay);
-            };
+                `;
+      $("#orders").append(orderDetailsDisplay);
+    }
 
-                newTotalPrice = price.reduce(quantitySum).toFixed(2);
-                
-                $("#totalDisplay").append(`
+    newTotalPrice = price.reduce(quantitySum).toFixed(2);
+
+    $("#totalDisplay").append(`
 
                 <h6><strong>Your total is : <span>$${newTotalPrice}</span></strong></h6>
         
                 `);
-       
+  }
+
+  function removeItem() {
+    const item = $(this).data("menuitem");
+
+    for (var i = 0; i < orderDetails.length; i++) {
+      if (item === orderDetails[i].menu_items) {
+        orderDetails.splice(i, 1);
+      }
+    }
+    updateDB();
+  }
+
+  function updateDB() {
+    var menuItems = JSON.stringify(orderDetails);
+    var orderTotal = orderDetails.map(
+      (totals) => totals.quantities * totals.price
+    );
+    var newTotal = parseInt(orderTotal.reduce(quantitySum, 0).toFixed(2));
+
+    var totalQ = orderDetails.map((quantity) => parseInt(quantity.quantities));
+    var totalQuantitySum = totalQ.reduce(quantitySum, 0);
+
+    var orderObj = {
+      menu_items: menuItems,
+      quantity: totalQuantitySum,
+      total_price: newTotal,
     };
 
+    $.ajax({
+      url: "/api/orders/" + orderId,
+      type: "PUT",
+      data: orderObj,
+    }).then(function (response) {
+      location.reload();
+    });
+  }
 
-    function removeItem() {
+  function quantitySum(total, orderDetail) {
+    return total + orderDetail;
+  }
 
-        const item = $(this).data("menuitem");
-       
+  function updateQuantity() {
+    var menuTitle = $(this).data("title");
 
-        for (var i = 0; i < orderDetails.length; i++) {
+    for (var i = 0; i < orderDetails.length; i++) {
+      if (orderDetails[i].menu_items === menuTitle) {
+        orderDetails[i].quantities = $(this).val();
+      }
+    }
+    updateDB();
+  }
 
-            if (item === orderDetails[i].menu_items) {
+  // Send phone number to api-send-sms-routes.js
+  function sendMessageApi(phoneNumber) {
+    $.post("/api/checkout", {
+      phoneNumber: phoneNumber,
+    }).then(function (data) {
+      console.log(data);
+    });
+  }
 
-                orderDetails.splice(i, 1);
-                
-            }
-            
-        }
-        updateDB();
-        
-    };
+  //On click functions
 
-    function updateDB() {
+  $(document).on("click", ".removeItem", removeItem);
 
+  $("#submitOrder").on("click", function (e) {
+    const phoneInput = $("#icon_telephone").val().trim();
+    let phoneNumber = [];
 
-        var menuItems = JSON.stringify(orderDetails);
-        var orderTotal = orderDetails.map(totals => totals.quantities * totals.price);
-        var newTotal = parseInt(orderTotal.reduce(quantitySum, 0).toFixed(2));
-        
-       
-        var totalQ = orderDetails.map(quantity => parseInt(quantity.quantities));
-        var totalQuantitySum =  totalQ.reduce(quantitySum, 0);
-        
-        var orderObj = {
-
-            menu_items : menuItems,
-            quantity : totalQuantitySum,
-            total_price : newTotal
-
-        }
-      
-        $.ajax({
-
-            url : "/api/orders/" + orderId,
-            type : "PUT",
-            data : orderObj
-
-        }).then(function(response){
-            location.reload();
-            
-        });
-       
-    };
-
-    function quantitySum(total, orderDetail){
-        
-        return total + orderDetail;
-      }  
-
-    function updateQuantity(){
-        
-        var menuTitle = $(this).data("title");
-      
-         for (var i = 0; i < orderDetails.length; i++){
-
-            if(orderDetails[i].menu_items === menuTitle){
-
-                orderDetails[i].quantities = $(this).val();
-                
-            }
-         }
-            updateDB();
-            
-        } 
-
-        // Send phone number to api-send-sms-routes.js
-    function sendMessageApi(phoneNumber) {
-        $.post("/api/checkout", {
-        phoneNumber: phoneNumber,
-        }).then(function (data) {
-        console.log(data);
-        });
+    for (var i = 0; i < phoneInput.length; i++) {
+      if (!isNaN(phoneInput[i])) {
+        phoneNumber.push(phoneInput.substr(i, 1));
+      }
     }
 
-        //On click functions
+    const filteredPhoneNumber = 1 + phoneNumber.join("");
+    sendMessageApi(filteredPhoneNumber);
+    window.location.href = "./order-review.html";
+  });
 
-        $(document).on("click", ".removeItem", removeItem);
-
-        $("#submitOrder").on("click", function(e){
-            
-            const phoneInput = $("#icon_telephone").val().trim();
-            let phoneNumber = [];
-           
-            for (var i = 0; i < phoneInput.length; i++){
-
-                if(!isNaN(phoneInput[i])){
-
-                    phoneNumber.push(phoneInput.substr(i, 1));
-
-                } 
-            }
-
-            const filteredPhoneNumber = 1 + phoneNumber.join("");
-            sendMessageApi(filteredPhoneNumber);
-           window.location.href = "./order-review.html";
-        });
-
-        $(document).on("change", ".quantity", updateQuantity);
+  $(document).on("change", ".quantity", updateQuantity);
 });
-
-
-           
-
